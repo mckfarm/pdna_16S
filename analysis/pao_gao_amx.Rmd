@@ -1,0 +1,108 @@
+---
+title: "PAO, GAO, AMX figure and analysis"
+output: html_notebook
+---
+
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(MetBrewer)
+library(extrafont)
+
+```
+
+
+```{r}
+
+source("./scripts/plotting.R")
+table_rel_long <- readRDS("./intermediate/table_rel_long.RDS")
+blast_dechloro_pao <- readRDS("./intermediate/blast_dechloro_pao.RDS")
+
+```
+
+
+Ab table - edit in excel
+```{r}
+table_rel_long %>%
+  filter(Genus %in% c("Ca_Accumulibacter", "Ca_Competibacter", "Ca_Phosphoribacter", "Tetrasphaera", "Ca_Obscuribacter", "Defluviicoccus") | seq %in% blast_dechloro_pao$query) %>%
+  select(day, location, Genus, rel_ab) %>%
+  group_by(day, location, Genus) %>%
+  summarise(sum_ab = sum(rel_ab)) %>%
+  ungroup() %>%
+  group_by(location, Genus) %>%
+  summarise(median = median(sum_ab))
+```
+
+
+Figures
+```{r fig.width = 4, fig.height = 6}
+
+
+plt_pao_gao_1 <-
+  table_rel_long %>%
+  filter(Genus %in% c("Ca_Accumulibacter", "Ca_Competibacter")) %>%
+  select(day, location, Genus, rel_ab) %>%
+  group_by(day, location, Genus) %>%
+  summarise(sum_ab = sum(rel_ab)) %>%
+  mutate(Genus = gsub("_", ". ", Genus)) %>%
+  ggplot(., aes(x = day, y = sum_ab, color = location, shape = location)) +
+  facet_wrap(~ Genus, nrow = 1) +
+  phases_rect + 
+  geom_point(alpha = 0.7, size = 1) +
+  geom_line() + 
+  scale_x_continuous(breaks = seq(0, 300, by = 50)) + 
+  scale_shape_manual(values = c(15, 16), name = "Location") +
+  scale_color_manual(values = location_cols) + 
+  ylim(0, 60) +
+  labs(x = "Day of Operation", y = "Relative abundance [%]", title = "", color = "Location", shape = "Location") + 
+  theme_classic() +
+  theme(text = element_text(family = "FreeSans"), strip.text = element_text(face = "italic"))
+
+plt_pao_gao_2 <- table_rel_long %>%
+  filter(Genus == "Defluviicoccus" | seq %in% blast_dechloro_pao$query)%>%
+  select(day, location, Genus, rel_ab) %>%
+  group_by(day, location, Genus) %>%
+  summarise(sum_ab = sum(rel_ab)) %>%
+  mutate(Genus = gsub("_", ". ", Genus)) %>%
+  ggplot(., aes(x = day, y = sum_ab, color = location, shape = location)) +
+  facet_wrap(~ Genus, nrow = 1) +
+  phases_rect + 
+  geom_point(alpha = 0.7, size = 1) +
+  geom_line() + 
+  scale_x_continuous(breaks = seq(0, 300, by = 50)) + 
+  scale_shape_manual(values = c(15, 16), name = "Location") +
+  scale_color_manual(values = location_cols) + 
+  ylim(0, 3) + 
+  labs(x = "Day of Operation", y = "Relative abundance [%]", title = "", color = "Location", shape = "Location") + 
+  theme_classic() +
+  theme(text = element_text(family = "FreeSans"), strip.text = element_text(face = "italic"))
+
+plt_nitro <- 
+  table_rel_long %>%
+  filter(Genus %in% c("Ca_Brocadia", "Nitrospira")) %>%
+  select(day, location, Genus, rel_ab) %>%
+  group_by(day, location, Genus) %>%
+  summarise(sum_ab = sum(rel_ab)) %>%
+  mutate(Genus = gsub("_", ". ", Genus)) %>%
+  ggplot(., aes(x = day, y = sum_ab, color = location, shape = location)) +
+  facet_wrap(~ Genus, nrow = 1) +
+  phases_rect + 
+  geom_point(alpha = 0.7, size = 1) +
+  geom_line() + 
+  scale_x_continuous(breaks = seq(0, 300, by = 50)) + 
+  scale_shape_manual(values = c(15, 16), name = "Location") +
+  scale_color_manual(values = location_cols) + 
+  labs(x = "Day of Operation", y = "Relative abundance [%]", title = "", color = "Location", shape = "Location") + 
+  theme_classic() +
+  theme(text = element_text(family = "FreeSans"), strip.text = element_text(face = "italic"))
+
+plt_pao_gao_1 / plt_pao_gao_2 / plt_nitro + plot_layout(guides = "collect", axis_titles = "collect") & theme(legend.position = "top")
+
+
+ggsave("./figures/pao_gao_panels.png", width = 4, height = 6, units = "in", dpi = 320)
+
+
+# rm(plt_pao_gao_1, plt_pao_gao_2, plt_nitro)
+  
+```

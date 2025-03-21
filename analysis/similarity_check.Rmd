@@ -1,0 +1,232 @@
+---
+title: "ASV analysis for PAO and GAO"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+
+```{r packages}
+
+library(tidyverse)
+
+source("./scripts/plotting.R")
+```
+
+
+Data read in and parsing
+```{r}
+
+table_rel_long <- readRDS("./intermediate/table_rel_long")
+
+midas_taxonomy <- read_delim("~/b1052/mckenna/resources/midas_5.3/midas_5.3.txt", 
+                             col_names = c("kingdom", "phylum", "class", 
+                                           "order", "family", "genus", "species")) %>%
+    separate(col = kingdom, into = c("id", "kingdom"), sep = "\\s") %>%
+    mutate_at(vars(kingdom:species), ~ str_replace(., ";", "")) %>%
+    mutate_at(vars(kingdom:species), ~gsub(x = ., "[A-z]__", ""))
+
+
+```
+
+
+
+
+# Competibacter denitrificans?
+No matches with Competibacter denitrificans sequences
+```{r message=FALSE, warning=FALSE}
+blast_bc_comp <- read_delim("./blast_out/competibacter_blast_bc.txt", 
+                            col_names = c("query", "subject", "pident", "length", 
+                            "mismatch", "gapopen", "qstart", "qend",
+                            "sstart", "send", "evalue", "bitscore")) %>%
+  filter(pident >= 97) %>%
+  left_join(midas_taxonomy, by = c("subject" = "id"))
+
+blast_ss_1_comp <- read_delim("./blast_out/competibacter_blast_ss_1.txt", 
+                            col_names = c("query", "subject", "pident", "length", 
+                            "mismatch", "gapopen", "qstart", "qend",
+                            "sstart", "send", "evalue", "bitscore")) %>%
+  filter(pident >= 97) %>%
+  left_join(midas_taxonomy, by = c("subject" = "id"))
+
+blast_ss_2_comp <- read_delim("./blast_out/competibacter_blast_ss_2.txt", 
+                            col_names = c("query", "subject", "pident", "length", 
+                            "mismatch", "gapopen", "qstart", "qend",
+                            "sstart", "send", "evalue", "bitscore")) %>%
+  filter(pident >= 97) %>%
+  left_join(midas_taxonomy, by = c("subject" = "id"))
+
+blast_comp_all <- bind_rows(blast_bc_comp, blast_ss_1_comp, blast_ss_2_comp) %>%
+  distinct(across(everything()))
+
+rm(blast_bc_comp, blast_ss_1_comp, blast_ss_2_comp)
+
+```
+
+
+# Dechloromonas PAO?
+A few matches to Dechloromonas phosphoritropha. I also looked for Dechloromonas denitrificans, agitata, and hortensis but no significant hits. That doesn't necessarily mean there weren't denitrifying Dechloromonas though, just that we couldn't determine based on 16S.
+```{r message=FALSE, warning=FALSE}
+blast_bc_dechloro <- read_delim("./blast_out/dechloro_blast_bc.txt", 
+                            col_names = c("query", "subject", "pident", "length", 
+                            "mismatch", "gapopen", "qstart", "qend",
+                            "sstart", "send", "evalue", "bitscore")) %>%
+  filter(pident >= 97) %>%
+  left_join(midas_taxonomy, by = c("subject" = "id"))
+
+blast_ss_1_dechloro <- read_delim("./blast_out/dechloro_blast_ss_1.txt", 
+                            col_names = c("query", "subject", "pident", "length", 
+                            "mismatch", "gapopen", "qstart", "qend",
+                            "sstart", "send", "evalue", "bitscore")) %>%
+  filter(pident >= 97) %>%
+  left_join(midas_taxonomy, by = c("subject" = "id"))
+
+blast_ss_2_dechloro <- read_delim("./blast_out/dechloro_blast_ss_2.txt", 
+                            col_names = c("query", "subject", "pident", "length", 
+                            "mismatch", "gapopen", "qstart", "qend",
+                            "sstart", "send", "evalue", "bitscore")) %>%
+  filter(pident >= 97) %>%
+  left_join(midas_taxonomy, by = c("subject" = "id"))
+
+
+blast_dechloro_all <- bind_rows(blast_bc_dechloro, blast_ss_1_dechloro, blast_ss_2_dechloro) %>%
+  distinct(across(everything()))
+
+blast_dechloro_pao <- blast_dechloro_all %>%
+  filter(species == "Azonexus_phosphoritropha")
+
+rm(blast_bc_dechloro, blast_ss_1_dechloro, blast_ss_2_dechloro)
+
+
+saveRDS(blast_dechloro_pao, file = "./intermediate/blast_dechloro_pao.RDS")
+
+```
+
+
+```{r}
+
+
+table_rel_long %>% 
+  filter(Genus == "Azonexus") %>%
+  mutate(dechloro_pao = ifelse(seq %in% blast_dechloro_pao$query, "PAO", "Non-PAO")) %>%
+  group_by(day, location, dechloro_pao) %>%
+  summarise(sum_ab = sum(rel_ab)) %>%
+  ggplot(., aes(x = day, y = sum_ab, color = location, shape = location)) +
+  facet_wrap(~dechloro_pao, nrow = 2, scales = "free") +
+  phases_rect +  
+  geom_point() +
+  geom_line() +
+  scale_color_manual(values = location_cols, name = "Location") + 
+  scale_x_continuous(breaks = seq(0, 300, by = 50)) + 
+  scale_shape_manual(values = c(15, 16), name = "Location") +
+  labs(x = "Day of Operation", y = "Relative abundance [%]") + 
+  theme_classic() +
+  theme(legend.position = "top")
+
+ggsave("./figures/azonexus_pao_panels.png", width = 4, height = 5, units = "in", dpi = 320)
+
+
+azo_only <- table_rel_long %>%
+  filter(Genus == "Azonexus")
+
+most_ab <- azo_only %>%
+  group_by(seq) %>%
+  summarise(median = median(rel_ab)) %>%
+  filter(median > 0 )
+
+azo_only_unique <- most_ab %>%
+  select(seq) %>%
+  ungroup() %>%
+  distinct(seq)
+
+azo_only %>%
+  filter(seq %in% most_ab$seq) %>%
+  group_by(day, location, seq) %>%
+  summarise(sum_ab = sum(rel_ab)) %>%
+  ggplot(., aes(x = day, y = sum_ab, color = seq, shape = seq)) +
+  facet_wrap(~location, nrow = 2) +
+  phases_lines + 
+  geom_point(alpha = 0.7, size = 2) +
+  geom_line() + 
+  scale_x_continuous(breaks = seq(0, 300, by = 30)) + 
+  labs(x = "Day of Operation", y = "Relative abundance [%]", title = "Azonexus") + 
+  theme_classic()
+
+
+write_delim(azo_only_unique, "./intermediate/azo_unique.txt", col_names = FALSE)
+
+
+```
+
+
+# Competibacter ASV analysis
+
+```{r fig.width = 10, fig.height = 6}
+
+comp_only <- table_rel_long %>%
+  filter(Genus == "Ca_Competibacter")
+
+most_ab <- comp_only %>%
+  group_by(seq) %>%
+  summarise(median = median(rel_ab)) %>%
+  filter(median > 0 )
+
+comp_only %>%
+  filter(seq %in% most_ab$seq) %>%
+  group_by(day, location, seq) %>%
+  summarise(sum_ab = sum(rel_ab)) %>%
+  ggplot(., aes(x = day, y = sum_ab, color = seq, shape = seq)) +
+  facet_wrap(~location, nrow = 2) +
+  phases_lines + 
+  geom_point(alpha = 0.7, size = 2) +
+  geom_line() + 
+  scale_x_continuous(breaks = seq(0, 300, by = 30)) + 
+  labs(x = "Day of Operation", y = "Relative abundance [%]", title = "Competibacter ASVs") + 
+  theme_classic()
+
+comp_only_unique <- most_ab %>%
+  select(seq) %>%
+  ungroup() %>%
+  distinct(seq)
+
+write_delim(comp_only_unique, "./intermediate/comp_unique.txt", col_names = FALSE)
+
+```
+
+
+```{r fig.width = 10, fig.height = 6}
+acc_only <- table_rel_long %>%
+  filter(Genus == "Ca_Accumulibacter")
+
+most_ab <- acc_only %>%
+  group_by(seq) %>%
+  summarise(median = median(rel_ab)) %>%
+  filter(median > 0.2)
+
+acc_only %>%
+  filter(seq %in% most_ab$seq) %>%
+  group_by(day, location, seq) %>%
+  summarise(sum_ab = sum(rel_ab)) %>%
+  ggplot(., aes(x = day, y = sum_ab, color = seq, shape = seq)) +
+  facet_wrap(~location, nrow = 2) +
+  phases_lines + 
+  geom_point(alpha = 0.7, size = 1) +
+  geom_line() + 
+  scale_x_continuous(breaks = seq(0, 300, by = 30)) + 
+  labs(x = "Day of Operation", y = "Relative abundance [%]", title = "Accumulibacter ASVs") + 
+  theme_classic()
+
+acc_only_unique <- most_ab %>%
+  select(seq) %>%
+  ungroup() %>%
+  distinct(seq)
+
+write_delim(acc_only_unique, "./intermediate/acc_unique.txt", col_names = FALSE)
+
+```
+

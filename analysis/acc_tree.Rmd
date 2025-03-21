@@ -1,0 +1,106 @@
+---
+title: "tree outputs"
+output: html_notebook
+---
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(svglite)
+library(ggtree)
+library(ape)
+
+```
+
+Instructions for quest 
+
+1. extract seqs of interest from rep_seqs file (qiime output)
+module load seqkit (version is 0.6.0)
+cd /projects/p31629/zhen_check
+seqkit grep --pattern-file ./intermediate/acc_unique.txt ./unzipped_qza/rep_seqs_all.fasta -o ./intermediate/acc_only.fa
+seqkit grep --pattern-file ./intermediate/azo_unique.txt ./unzipped_qza/rep_seqs_all.fasta -o ./intermediate/azo_only.fa
+
+2. blast and save seqs
+dedup seqs from blast results
+cd ./intermediate
+seqkit rmdup -n -i acc_blast.fa -o acc_blast_dedup.fa
+(skip for azo)
+
+3. prep for msa
+add qiime seqs to dedup file
+add outgroup
+cat acc_blast_dedup.fa acc_only.fa root.fa /projects/b1052/mckenna/resources/midas_5.3/acc_trim_clean_dedup.fa > acc_for_align.fa
+seqkit rmdup -n -i acc_for_align.fa -o acc_for_align_dedup.fa
+
+cat azo_only.fa root.fa /projects/b1052/mckenna/resources/midas_5.3/azo_trim_clean_dedup.fa > azo_for_align.fa
+seqkit rmdup -n -i azo_for_align.fa -o azo_for_align_dedup.fa
+
+
+4. msa
+module load mafft (7.407)
+mafft acc_for_align_dedup.fa > acc_align.msa
+mafft azo_for_align_dedup.fa > azo_align.msa
+
+
+module load fasttree (2.1.10)
+FastTree acc_align.msa > acc_tree.tre
+FastTree azo_align.msa > azo_tree.tre
+
+
+
+
+```{r fig.height = 10}
+acc_tree <- read.tree("./intermediate/acc_tree.tre")
+acc_tree_root <- root(acc_tree, outgroup = "NR_114042.1", edgelabel = TRUE, resolve.root = TRUE)
+
+ggtree(acc_tree_root) +
+  geom_nodepoint(aes(subset=acc_tree_root$node.label>=0.9), size = 2) +
+  geom_nodepoint(aes(subset=acc_tree_root$node.label<0.9 & acc_tree_root$node.label>=0.5), size = 2, color = "blue", shape = 1) +
+  geom_tree() +
+  geom_tiplab() +
+  theme_tree() + 
+  geom_treescale()
+
+
+ggsave("./figures/acc_test.svg", width = 60, height = 10, units = "in", limitsize = FALSE)
+```
+
+```{r fig.height = 10}
+azo_tree <- read.tree("./intermediate/azo_tree.tre")
+azo_tree_root <- root(azo_tree, outgroup = "NR_114042.1", edgelabel = TRUE, resolve.root = TRUE)
+
+# ggtree(azo_tree_root) +
+#   geom_nodepoint(aes(subset=azo_tree_root$node.label>=0.9), size = 2) +
+#   geom_nodepoint(aes(subset=azo_tree_root$node.label<0.9 & azo_tree_root$node.label>=0.5), shape=10, size = 2) +
+#   geom_tree() +
+#   geom_tiplab() +
+#   theme_tree()
+
+
+midas_taxonomy <- read_delim("~/b1052/mckenna/resources/midas_5.3/midas_5.3.txt", 
+                             col_names = c("kingdom", "phylum", "class", 
+                                           "order", "family", "genus", "species")) %>%
+    separate(col = kingdom, into = c("id", "kingdom"), sep = "\\s") %>%
+    mutate_at(vars(kingdom:species), ~ str_replace(., ";", "")) %>%
+    mutate_at(vars(kingdom:species), ~gsub(x = ., "[A-z]__", ""))
+
+azo_labs <- as.data.frame(list(azo_tree$tip.label), col.names = c("id")) %>%
+  left_join(midas_taxonomy, by = "id") %>%
+  mutate(id_new = case_when(grepl("midas_s", species) ~ id,
+                            is.na(species) ~ id,
+                            .default = paste0(id, " (", species, ")")))
+
+azo_tree_root$tip.label <- azo_labs$id_new
+
+
+ggtree(azo_tree_root) +
+  geom_nodepoint(aes(subset=azo_tree_root$node.label>=0.9), size = 2) +
+  geom_nodepoint(aes(subset=azo_tree_root$node.label<0.9 & azo_tree_root$node.label>=0.5), size = 2, color = "blue", shape = 1) +
+  geom_tree() +
+  geom_tiplab() +
+  theme_tree()+ 
+  geom_treescale()
+
+ggsave("./figures/azo_test.svg", width = 60, height = 20, units = "in", limitsize = FALSE)
+```
+
+

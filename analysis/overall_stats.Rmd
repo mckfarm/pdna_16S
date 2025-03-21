@@ -1,0 +1,71 @@
+---
+title: "overall stats"
+output: html_notebook
+---
+
+```{r packages, message=FALSE, warning=FALSE}
+
+library(tidyverse)
+library(MetBrewer)
+library(extrafont)
+
+source("./scripts/plotting.R")
+table_rel_long <- readRDS("./intermediate/table_rel_long.RDS")
+```
+
+aggregate by genus
+```{r}
+table_genus <- table_rel_long %>%
+  select(c(rel_ab, Genus, location, day)) %>%
+  group_by(Genus, location, day) %>%
+  summarise(tot_ab = sum(rel_ab)) %>%
+  ungroup() %>%
+  filter(!is.na(Genus)) %>%
+  mutate(Genus = str_replace(Genus, "Ca_", "Ca. "))
+  
+```
+
+top 10 taxa by location
+- copy top genus table to excel to make nice table
+```{r}
+
+top_genus <- table_genus %>%
+  group_by(Genus, location) %>%
+  summarise(med = median(tot_ab)) %>%
+  ungroup() %>%
+  group_by(location) %>%
+  slice_max(order_by = med,  n = 10) %>%
+  pivot_wider(names_from = location, values_from = med) 
+
+top_bc <- top_genus %>%
+  select(Genus, "Biofilm Carriers") %>%
+  filter(!is.na(`Biofilm Carriers`))
+
+top_ss <- top_genus %>%
+  select(Genus, "Suspended Solids") %>%
+  filter(!is.na(`Suspended Solids`))
+
+table_genus_bc <- table_genus %>%
+  filter(location == "Biofilm Carriers") %>%
+  filter(Genus %in% top_bc$Genus)
+
+table_genus_ss <- table_genus %>%
+  filter(location == "Suspended Solids") %>%
+  filter(Genus %in% top_ss$Genus)
+
+table_genus_top <- rbind(table_genus_bc, table_genus_ss) %>%
+  unique()
+
+ggplot(table_genus_top, aes(x = day, y = tot_ab, fill = Genus)) +
+  facet_wrap(~location, scales = "free_y", nrow = 2) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = met.brewer("Signac", 14)) + 
+  labs(x = "Day of Operation", y = "Relative abundance [%]") + 
+  theme_classic() +
+  theme(text = element_text(family = "FreeSans"), legend.text = element_text(face = "italic"))
+
+ggsave("./figures/top_10.png", width = 8, height = 5, units = "in", dpi = 320)
+  
+
+```
+

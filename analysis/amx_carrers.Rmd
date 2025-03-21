@@ -1,0 +1,80 @@
+---
+title: "amx carrier analysis"
+output: html_notebook
+---
+
+
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(MetBrewer)
+library(extrafont)
+
+```
+
+
+```{r}
+
+source("./scripts/plotting.R")
+table_rel_long <- readRDS("./intermediate/table_rel_long.RDS")
+
+```
+
+aggregate to genus level
+```{r}
+table_genus <- table_rel_long %>%
+  select(c(rel_ab, Genus, location, day)) %>%
+  group_by(Genus, location, day) %>%
+  summarise(tot_ab = sum(rel_ab)) %>%
+  ungroup() %>%
+  filter(!is.na(Genus)) %>%
+  mutate(Genus = str_replace(Genus, "Ca_", "Ca. "))
+
+
+```
+seed
+```{r}
+bc_wide <- table_genus %>%
+  filter(location == "Biofilm Carriers") %>%
+  mutate(tot_ab = replace_na(tot_ab, 0)) %>%
+  pivot_wider(names_from = day, values_from = tot_ab) 
+
+bc_list_seed <- c("Nitrospira", "midas_g_4042", "Ca. Brocadia", "Crenothrix", "midas_g_41102") 
+bc_list_end <- c("Thiobacillus", "Azonexus", "Ca. Accumulibacter", "Ca. Competibacter", "Denitratisoma")
+
+table_bc_diff <- table_genus %>%
+  filter(day >= 150) %>% 
+  filter(Genus %in% c(bc_list_seed, bc_list_end))
+
+plt_seed <- table_bc_diff %>%
+  filter(Genus %in% bc_list_seed) %>%
+  ggplot(., aes(x = day, y = tot_ab, color = location)) +
+  facet_wrap(~Genus, scales = "free", nrow = 1) +
+  geom_point() + 
+  geom_line() + 
+  scale_shape_manual(values = c(15, 16), name = "Location") +
+  scale_color_manual(values = location_cols) +
+  scale_x_continuous(breaks = seq(150, 300, by = 50)) + 
+  labs(x = "Day of Operation", y = "Relative abundance [%]", title = "", color = "Location", shape = "Location") + 
+  theme_classic() + 
+  theme(text = element_text(family = "FreeSans"), strip.text = element_text(face = "italic"))
+  
+plt_end <- table_bc_diff %>%
+  filter(Genus %in% bc_list_end) %>%
+  ggplot(., aes(x = day, y = tot_ab, color = location)) +
+  facet_wrap(~Genus, scales = "free", nrow = 1) +
+  geom_point() + 
+  geom_line() + 
+  scale_shape_manual(values = c(15, 16), name = "Location") +
+  scale_color_manual(values = location_cols) +
+  scale_x_continuous(breaks = seq(150, 300, by = 50)) + 
+  labs(x = "Day of Operation", y = "Relative abundance [%]", title = "", color = "Location", shape = "Location") + 
+  theme_classic() + 
+  theme(text = element_text(family = "FreeSans"), strip.text = element_text(face = "italic"))
+
+plt_seed / plt_end + plot_layout(guides = "collect", axis_titles = "collect") & theme(legend.position = "top")
+ggsave("./figures/amx_seed_compare.png", width = 7.5, height = 4, units = "in", dpi = 320)
+
+```
+
